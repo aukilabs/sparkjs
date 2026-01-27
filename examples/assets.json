@@ -146,5 +146,13 @@
   "woobles.spz": {
     "url": "https://sparkjs.dev/assets/splats/woobles.spz",
     "directory": "splats"
+  },
+  "FP_Hub_rot_d005.ply": {
+    "url": "https://sparkjs.dev/assets/splats/FP_Hub_rot_d005.ply",
+    "directory": "splats"
+  },
+  "FP_Hub_rot.splat": {
+    "url": "https://sparkjs.dev/assets/splats/FP_Hub_rot.splat",
+    "directory": "splats"
   }
 }
