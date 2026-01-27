@@ -40,6 +40,8 @@ export declare class SplatMesh extends SplatGenerator {
     packedSplats: PackedSplats;
     recolor: THREE.Color;
     opacity: number;
+    minDistance: number;
+    maxDistance: number;
     context: SplatMeshContext;
     onFrame?: ({ mesh, time, deltaTime, }: {
         mesh: SplatMesh;
@@ -69,6 +71,7 @@ export declare class SplatMesh extends SplatGenerator {
     getBoundingBox(centers_only?: boolean): THREE.Box3;
     constructGenerator(context: SplatMeshContext): void;
     updateGenerator(): void;
+    setDistanceRange(minDistance: number, maxDistance: number): void;
     update({ time, viewToWorld, deltaTime, globalEdits, }: {
         time: number;
         viewToWorld: THREE.Matrix4;
