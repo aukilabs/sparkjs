@@ -183,6 +183,7 @@
       }
     }
   </script>
+  <script src="/examples/js/vendor/stats.js/build/stats.min.js"></script>
   <script type="module">
     import * as THREE from "three";
     import { SplatMesh, transcodeSpz, SparkControls } from "@sparkjsdev/spark";
@@ -205,6 +206,9 @@
     // orbitControls.target.set(0, 0, 0);
     // orbitControls.minDistance = 0.1;
     // orbitControls.maxDistance = 10;
+    const stats = new Stats();
+    document.body.appendChild(stats.dom);
+    stats.dom.style.display = "block"
 
     function resize() {
       const width = window.innerWidth;
@@ -227,9 +231,12 @@
 
     renderer.setAnimationLoop(function animate(time) {
       resize();
+      stats.begin();
       // orbitControls.update();
       controls.update(camera);
       renderer.render(scene, camera);
+
+      stats.end();
     });
 
     // Handle drag and drop files.
