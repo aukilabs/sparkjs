@@ -28,11 +28,14 @@ import {
   combineGsplat,
   defineGsplat,
   distance,
+  div,
   dyno,
   dynoBlock,
   dynoConst,
+  equal,
   extendVec,
   greaterThan,
+  imod,
   lessThan,
   mul,
   normalize,
@@ -460,14 +463,28 @@ export class SplatMesh extends SplatGenerator {
 
         // Apply distance-based culling: set opacity to 0 if outside distance range
         if (this.minDistance > 0 || this.maxDistance > 0) {
-          const { center, rgba } = splitGsplat(gsplat).outputs;
+          const { center, rgba, active } = splitGsplat(gsplat).outputs;
           // Calculate distance from camera (viewToWorld translate is camera position)
           const cameraPos = this.context.viewToWorld.translate;
           const dist = distance(center, cameraPos);
 
           // Create opacity modifier based on distance
           const minDist = dynoConst("float", this.minDistance);
-          const maxDist = dynoConst("float", this.maxDistance);
+          const nearDist = dynoConst("float", this.maxDistance);
+          const maxDist = dynoConst("float", this.maxDistance * 4);
+          const lodLerp = div(sub(maxDist, dist), sub(maxDist, nearDist));
+          const lodLerpInv = sub(dynoConst("float", 1), lodLerp);
+          const minAlpha = add(
+            mul(dynoConst("float", 0.89), lodLerpInv),
+            dynoConst("float", 0.1),
+          );
+
+          const { x, y, z, w } = split(rgba).outputs;
+          const downsampleNth = select(
+            greaterThan(dist, dynoConst("float", this.maxDistance * 2)),
+            dynoConst("int", 2),
+            dynoConst("int", 1),
+          );
 
           // If maxDistance is 0, it means no max limit, so only check minDistance
           let withinRange: DynoVal<"bool">;
@@ -476,8 +493,11 @@ export class SplatMesh extends SplatGenerator {
             const aboveMin = greaterThan(dist, minDist);
             const belowMax = lessThan(dist, maxDist);
             withinRange = and(
-              aboveMin as DynoVal<"bool">,
-              belowMax as DynoVal<"bool">,
+              and(
+                and(aboveMin as DynoVal<"bool">, belowMax as DynoVal<"bool">),
+                equal(imod(index, downsampleNth), dynoConst("int", 0)),
+              ),
+              greaterThan(w, minAlpha),
             );
           } else {
             // Only min distance limit
@@ -485,7 +505,8 @@ export class SplatMesh extends SplatGenerator {
           }
 
           // Modify alpha channel based on distance
-          const { x, y, z, w } = split(rgba).outputs;
+          /*
+          const { x,y,z,w } = split(rgba).outputs;
           const newAlpha = select(
             withinRange as DynoVal<"bool">,
             w,
@@ -493,6 +514,13 @@ export class SplatMesh extends SplatGenerator {
           );
           const newRGBA = extendVec(extendVec(extendVec(x, y), z), newAlpha);
           gsplat = combineGsplat({ gsplat, rgba: newRGBA });
+          */
+          const newActive = select(
+            withinRange as DynoVal<"bool">,
+            dynoConst("uint", 1),
+            dynoConst("uint", 0),
+          );
+          gsplat = combineGsplat({ gsplat, flags: newActive });
         }
 
         // Apply any global recoloring and opacity

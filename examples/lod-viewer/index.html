@@ -34,7 +34,12 @@
     // const cameraFar = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 2, 100);
 
     const renderer = new THREE.WebGLRenderer();
-    renderer.setPixelRatio(window.devicePixelRatio);
+    let pixelRatio = Math.min(1, window.devicePixelRatio);
+    if (pixelRatio > 1) {
+      console.log("Capping WebGL rendering pixel ratio to 1 (devicePixelRatio was", window.devicePixelRatio, ")");
+      pixelRatio = 1;
+    }
+    renderer.setPixelRatio(pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
@@ -49,15 +54,19 @@
     // the camera, or as a frame of reference in WebXR mode
     const localFrame = new THREE.Group();
     scene.add(localFrame);
+    //localFrame.position.set(0, 2, -5);
 
     // Lower the splat rendering width to sqrt(5) std devs for more performance
     const spark = new SparkRenderer({ renderer, 
       maxStdDev: Math.sqrt(5), 
       preBlurAmount: 0.3,
       enable2DGS: true,
+      autoUpdate: false,
+      minPixelRadius: 2
     });
     // spark.defaultView.stochastic = true;
     localFrame.add(spark);
+    //scene.add(spark);
     localFrame.add(camera);
 
     camera.add(spark);
@@ -66,7 +75,7 @@
    
     // // LOD 0: High detail (0-2m)
     const lod0URL = await getAssetFileURL("FP_Hub_rot.splat");
-    const lod0 = new SplatMesh({ url: lod0URL });
+    const lod0 = new SplatMesh({ url: lod0URL, editable: false });
     lod0.quaternion.set(1, 0, 0, 0);
     lod0.scale.setScalar(0.5);
     lod0.setDistanceRange(0.1, 2.0);
@@ -79,7 +88,7 @@
     lod1.quaternion.set(1, 0, 0, 0);
     lod1.scale.setScalar(0.5);
     lod1.setDistanceRange(2.0, 100.0);
-    scene.add(lod1);
+    //scene.add(lod1);
 
 
 
@@ -97,6 +106,10 @@
 
     let lastCameraPos = new THREE.Vector3(0, 0, 0);
     const controls = new SparkControls({ canvas: renderer.domElement });
+
+    setInterval(() => {
+      spark.update({ scene });
+    }, 50);
 
     renderer.setAnimationLoop(function animate(time, xrFrame) {
       stats.begin();

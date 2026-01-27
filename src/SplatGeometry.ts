@@ -28,6 +28,7 @@ export class SplatGeometry extends THREE.InstancedBufferGeometry {
   }
 
   update(ordering: Uint32Array, activeSplats: number) {
+    console.log("update SplatGeometry", ordering.length, activeSplats);
     this.ordering = ordering;
     this.attribute.array = ordering;
     this.instanceCount = activeSplats;
