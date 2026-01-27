@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spark • Stochastic Rendering</title>
+  <style>
+    body {
+      margin: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/examples/js/vendor/three/build/three.module.js",
+        "@sparkjsdev/spark": "/dist/spark.module.js"
+      }
+    }
+  </script>
+  <script src="/examples/js/vendor/stats.js/build/stats.min.js"></script>
+  <script type="module">
+    import * as THREE from "three";
+    import { SparkRenderer, SparkControls, SplatMesh, VRButton } from "@sparkjsdev/spark";
+    import { getAssetFileURL } from "/examples/js/get-asset-url.js";
+
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    
+    // const cameraFar = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 2, 100);
+
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    window.addEventListener('resize', onWindowResize, false);
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Make a local frame of reference that we can move to control
+    // the camera, or as a frame of reference in WebXR mode
+    const localFrame = new THREE.Group();
+    scene.add(localFrame);
+
+    // Lower the splat rendering width to sqrt(5) std devs for more performance
+    const spark = new SparkRenderer({ renderer, 
+      maxStdDev: Math.sqrt(5), 
+      preBlurAmount: 0.3,
+      enable2DGS: true,
+    });
+    // spark.defaultView.stochastic = true;
+    localFrame.add(spark);
+    localFrame.add(camera);
+
+    camera.add(spark);
+    // localFrame.add(cameraFar);
+
+   
+    // // LOD 0: High detail (0-2m)
+    const lod0URL = await getAssetFileURL("FP_Hub_rot.splat");
+    const lod0 = new SplatMesh({ url: lod0URL });
+    lod0.quaternion.set(1, 0, 0, 0);
+    lod0.scale.setScalar(0.5);
+    lod0.setDistanceRange(0.1, 2.0);
+    scene.add(lod0);
+
+    // LOD 1: Medium detail (2-100m)
+    // Note: You would swap this with a lower-resolution splat file in production
+    const lod1URL = await getAssetFileURL("FP_Hub_rot_d005.ply");
+    const lod1 = new SplatMesh({ url: lod1URL });
+    lod1.quaternion.set(1, 0, 0, 0);
+    lod1.scale.setScalar(0.5);
+    lod1.setDistanceRange(2.0, 100.0);
+    scene.add(lod1);
+
+
+
+
+    // Create stats
+    const stats = new Stats();
+    document.body.appendChild(stats.dom);
+    stats.dom.style.display = "block"
+
+    const vrButton = VRButton.createButton(renderer);
+    if (vrButton) {
+      // WebXR is available, so show the button
+      document.body.appendChild(vrButton);
+    }
+
+    let lastCameraPos = new THREE.Vector3(0, 0, 0);
+    const controls = new SparkControls({ canvas: renderer.domElement });
+
+    renderer.setAnimationLoop(function animate(time, xrFrame) {
+      stats.begin();
+
+      controls.update(localFrame);
+
+      // This is a hack to make a "local" frame work reliably across
+      // Quest 3 and Vision Pro. Any big discontinuity in the camera
+      // results in a reverse shift of the local frame to compensate.
+      if (lastCameraPos.distanceTo(camera.position) > 0.5) {
+        localFrame.position.copy(camera.position).multiplyScalar(-1);
+      }
+      lastCameraPos.copy(camera.position);
+
+      renderer.render(scene, camera);
+      stats.end();
+    });
+  </script>
+</body>
+
+</html>
