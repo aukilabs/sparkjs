@@ -24,15 +24,20 @@ import {
   DynoVec4,
   Gsplat,
   add,
+  and,
   combineGsplat,
   defineGsplat,
+  distance,
   dyno,
   dynoBlock,
   dynoConst,
   extendVec,
+  greaterThan,
+  lessThan,
   mul,
   normalize,
   readPackedSplat,
+  select,
   split,
   splitGsplat,
   sub,
@@ -122,7 +127,10 @@ export class SplatMesh extends SplatGenerator {
   recolor: THREE.Color = new THREE.Color(1, 1, 1);
   // Global opacity multiplier for all splats in the mesh. (default: 1)
   opacity = 1;
-
+  // Minimum distance from camera to render splats in this mesh. (default: 0)
+  minDistance = 0;
+  // Maximum distance from camera to render splats in this mesh. 0 = no limit. (default: 0)
+  maxDistance = 0;
   // A SplatMeshContext consisting of useful scene and object dyno uniforms that can
   // be used to in the Gsplat processing pipeline, for example via objectModifier and
   // worldModifier. (created on construction)
@@ -450,6 +458,43 @@ export class SplatMesh extends SplatGenerator {
         // Transform from object to world-space
         gsplat = transform.applyGsplat(gsplat);
 
+        // Apply distance-based culling: set opacity to 0 if outside distance range
+        if (this.minDistance > 0 || this.maxDistance > 0) {
+          const { center, rgba } = splitGsplat(gsplat).outputs;
+          // Calculate distance from camera (viewToWorld translate is camera position)
+          const cameraPos = this.context.viewToWorld.translate;
+          const dist = distance(center, cameraPos);
+
+          // Create opacity modifier based on distance
+          const minDist = dynoConst("float", this.minDistance);
+          const maxDist = dynoConst("float", this.maxDistance);
+
+          // If maxDistance is 0, it means no max limit, so only check minDistance
+          let withinRange: DynoVal<"bool">;
+          if (this.maxDistance > 0) {
+            // Both min and max distance limits
+            const aboveMin = greaterThan(dist, minDist);
+            const belowMax = lessThan(dist, maxDist);
+            withinRange = and(
+              aboveMin as DynoVal<"bool">,
+              belowMax as DynoVal<"bool">,
+            );
+          } else {
+            // Only min distance limit
+            withinRange = greaterThan(dist, minDist);
+          }
+
+          // Modify alpha channel based on distance
+          const { x, y, z, w } = split(rgba).outputs;
+          const newAlpha = select(
+            withinRange as DynoVal<"bool">,
+            w,
+            dynoConst("float", 0.0),
+          );
+          const newRGBA = extendVec(extendVec(extendVec(x, y), z), newAlpha);
+          gsplat = combineGsplat({ gsplat, rgba: newRGBA });
+        }
+
         // Apply any global recoloring and opacity
         const recolorRgba = mul(recolor, splitGsplat(gsplat).outputs.rgba);
         gsplat = combineGsplat({ gsplat, rgba: recolorRgba });
@@ -478,6 +523,14 @@ export class SplatMesh extends SplatGenerator {
     this.constructGenerator(this.context);
   }
 
+  // Sets distance-based culling for this mesh by updating the SparkRenderer.
+  // Find the SparkRenderer in the parent scene and apply distance settings.
+  setDistanceRange(minDistance: number, maxDistance: number): void {
+    // Store for reference
+    this.minDistance = minDistance;
+    this.maxDistance = maxDistance;
+  }
+
   // This is called automatically by SparkRenderer and you should not have to
   // call it. It updates parameters for the generated pipeline and calls
   // updateGenerator() if the pipeline needs to change.
@@ -500,9 +553,12 @@ export class SplatMesh extends SplatGenerator {
     const { transform, viewToObject, recolor } = this.context;
     let updated = transform.update(this);
 
+    // Always update viewToWorld if distance culling is enabled
+    const needsViewToWorld =
+      this.enableViewToWorld || this.minDistance > 0 || this.maxDistance > 0;
     if (
       this.context.viewToWorld.updateFromMatrix(viewToWorld) &&
-      this.enableViewToWorld
+      needsViewToWorld
     ) {
       updated = true;
     }
@@ -586,6 +642,7 @@ export class SplatMesh extends SplatGenerator {
 
     if (updated) {
       this.updateVersion();
+      this.updateGenerator();
     }
 
     this.onFrame?.({ mesh: this, time, deltaTime });
