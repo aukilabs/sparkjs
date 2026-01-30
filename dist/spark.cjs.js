@@ -7413,9 +7413,15 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
           const dist = distance(center, cameraPos);
           const minDist = dynoConst("float", this.minDistance);
           const nearDist = dynoConst("float", this.maxDistance);
-          const maxDist = nearDist;
+          const maxDist = dynoConst("float", this.maxDistance * 4);
+          const lodLerp = div(sub(maxDist, dist), sub(maxDist, nearDist));
+          const lodLerpInv = sub(dynoConst("float", 1), lodLerp);
+          const minAlpha = add(
+            mul(dynoConst("float", 0.89), lodLerpInv),
+            dynoConst("float", 0.1)
+          );
           const { x, y, z, w } = split(rgba).outputs;
-          select(
+          const downsampleNth = select(
             greaterThan(dist, dynoConst("float", this.maxDistance * 2)),
             dynoConst("int", 2),
             dynoConst("int", 1)
@@ -7424,8 +7430,13 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
           if (this.maxDistance > 0) {
             const aboveMin = greaterThan(dist, minDist);
             const belowMax = lessThan(dist, maxDist);
-            withinRange = // and(
-            and(aboveMin, belowMax);
+            withinRange = and(
+              and(
+                and(aboveMin, belowMax),
+                equal(imod(index, downsampleNth), dynoConst("int", 0))
+              ),
+              greaterThan(w, minAlpha)
+            );
           } else {
             withinRange = greaterThan(dist, minDist);
           }
