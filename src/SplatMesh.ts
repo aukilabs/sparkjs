@@ -25,6 +25,7 @@ import {
   Gsplat,
   add,
   and,
+  clamp,
   combineGsplat,
   defineGsplat,
   distance,
@@ -34,9 +35,11 @@ import {
   dynoConst,
   equal,
   extendVec,
+  float,
   greaterThan,
   imod,
   lessThan,
+  mod,
   mul,
   normalize,
   readPackedSplat,
@@ -132,8 +135,20 @@ export class SplatMesh extends SplatGenerator {
   opacity = 1;
   // Minimum distance from camera to render splats in this mesh. (default: 0)
   minDistance = 0;
+  // Cull splats based on transparency and distance.
+  // The opacity cut-off ramps up linearly between fadeDistance and maxDistance.
+  // Must be between minDistance and maxDistance.
+  fadeDistance = 0;
   // Maximum distance from camera to render splats in this mesh. 0 = no limit. (default: 0)
   maxDistance = 0;
+
+  // Beyond downsampleDistance, only render every downsampleNth splat. E.g. 2 to render half as many splats.
+  downsampleNth = 1;
+  // Distance at which to downsample splats beyond. 0 to disable downsampling.
+  downsampleDistance = 0;
+  // Makes a less visible "edge" at downsampleDistance by varying the distance per splat.
+  downsampleSmoothing = 0.2;
+
   // A SplatMeshContext consisting of useful scene and object dyno uniforms that can
   // be used to in the Gsplat processing pipeline, for example via objectModifier and
   // worldModifier. (created on construction)
@@ -382,6 +397,12 @@ export class SplatMesh extends SplatGenerator {
 
   constructGenerator(context: SplatMeshContext) {
     const { transform, viewToObject, recolor } = context;
+
+    const useDistanceCulling = this.maxDistance > 0;
+    const fadeDistance = this.fadeDistance > 0 ? this.fadeDistance : 0;
+    const minDistance = this.minDistance > 0 ? this.minDistance : 0;
+    const maxDistance = this.maxDistance > 0 ? this.maxDistance : 0;
+
     const generator = dynoBlock(
       { index: "int" },
       { gsplat: Gsplat },
@@ -462,65 +483,81 @@ export class SplatMesh extends SplatGenerator {
         gsplat = transform.applyGsplat(gsplat);
 
         // Apply distance-based culling: set opacity to 0 if outside distance range
-        if (this.minDistance > 0 || this.maxDistance > 0) {
+        if (useDistanceCulling) {
           const { center, rgba, active } = splitGsplat(gsplat).outputs;
           // Calculate distance from camera (viewToWorld translate is camera position)
           const cameraPos = this.context.viewToWorld.translate;
           const dist = distance(center, cameraPos);
 
           // Create opacity modifier based on distance
-          const minDist = dynoConst("float", this.minDistance);
-          const nearDist = dynoConst("float", this.maxDistance);
-          const maxDist = dynoConst("float", this.maxDistance * 4);
-          const lodLerp = div(sub(maxDist, dist), sub(maxDist, nearDist));
+          const minDist = dynoConst("float", minDistance);
+          const fadeDist = dynoConst("float", fadeDistance);
+          const maxDist = dynoConst("float", maxDistance);
+          const lodLerpUnclamped = div(
+            sub(maxDist, dist),
+            sub(maxDist, fadeDist),
+          );
+          const lodLerp = clamp(
+            lodLerpUnclamped,
+            dynoConst("float", 0),
+            dynoConst("float", 1),
+          );
           const lodLerpInv = sub(dynoConst("float", 1), lodLerp);
+          //const minAlpha = lodLerpInv;
           const minAlpha = add(
             mul(dynoConst("float", 0.89), lodLerpInv),
             dynoConst("float", 0.1),
           );
 
           const { x, y, z, w } = split(rgba).outputs;
+          const downsampleDistance = dynoConst(
+            "float",
+            this.downsampleDistance,
+          );
+
+          // Prevent a hard "edge" visible between downsampled and non-downsampled splats
+          // by using a slightly different distance for each splat.
+          // Needs to be deterministic based on the splat index to not flicker randomly every frame.
+          // A simple modulo function on the index looks good enough.
+          const A = dynoConst("float", 7.0);
+          const B = dynoConst("float", 11.0);
+
+          const fuzzy = mod(mul(float(index), A), B);
+          const fuzzy01 = div(fuzzy, B);
+
+          const smoothingRatio = add(
+            dynoConst("float", 1 - this.downsampleSmoothing),
+            mul(fuzzy01, dynoConst("float", 2 * this.downsampleSmoothing)),
+          );
+
+          const downsampleDistanceSmooth = mul(
+            downsampleDistance,
+            smoothingRatio,
+          );
+
           const downsampleNth = select(
-            greaterThan(dist, dynoConst("float", this.maxDistance * 2)),
-            dynoConst("int", 2),
-            dynoConst("int", 1),
+            greaterThan(dist, downsampleDistanceSmooth),
+            dynoConst("int", this.downsampleNth),
+            dynoConst("int", 1), // 1 means keep all splats (since any index % 1 is ALWAYS 0)
           );
 
           // If maxDistance is 0, it means no max limit, so only check minDistance
-          let withinRange: DynoVal<"bool">;
-          if (this.maxDistance > 0) {
-            // Both min and max distance limits
-            const aboveMin = greaterThan(dist, minDist);
-            const belowMax = lessThan(dist, maxDist);
-            withinRange = and(
-              and(
-                and(aboveMin as DynoVal<"bool">, belowMax as DynoVal<"bool">),
-                equal(imod(index, downsampleNth), dynoConst("int", 0)),
-              ),
-              greaterThan(w, minAlpha),
-            );
-          } else {
-            // Only min distance limit
-            withinRange = greaterThan(dist, minDist);
-          }
-
-          // Modify alpha channel based on distance
-          /*
-          const { x,y,z,w } = split(rgba).outputs;
-          const newAlpha = select(
-            withinRange as DynoVal<"bool">,
-            w,
-            dynoConst("float", 0.0),
+          const keepDistance = and(
+            greaterThan(dist, minDist),
+            lessThan(dist, maxDist),
           );
-          const newRGBA = extendVec(extendVec(extendVec(x, y), z), newAlpha);
-          gsplat = combineGsplat({ gsplat, rgba: newRGBA });
-          */
-          const newActive = select(
-            withinRange as DynoVal<"bool">,
-            dynoConst("uint", 1),
+          const keepOpacity = greaterThan(w, minAlpha);
+          const keepDownsample = equal(
+            imod(index, downsampleNth),
+            dynoConst("int", 0),
+          );
+          const keep = and(and(keepDistance, keepOpacity), keepDownsample);
+          const newFlags = select(
+            keep as DynoVal<"bool">,
+            dynoConst("uint", 1), // 1 means visible
             dynoConst("uint", 0),
           );
-          gsplat = combineGsplat({ gsplat, flags: newActive });
+          gsplat = combineGsplat({ gsplat, flags: newFlags });
         }
 
         // Apply any global recoloring and opacity
@@ -559,6 +596,20 @@ export class SplatMesh extends SplatGenerator {
     this.maxDistance = maxDistance;
   }
 
+  setFadeDistance(fadeDistance: number): void {
+    this.fadeDistance = fadeDistance;
+  }
+
+  setDownsampling(
+    downsampleDistance: number,
+    downsampleNth = 2,
+    downsampleSmoothing = 0.2,
+  ): void {
+    this.downsampleDistance = downsampleDistance;
+    this.downsampleNth = downsampleNth;
+    this.downsampleSmoothing = downsampleSmoothing;
+  }
+
   // This is called automatically by SparkRenderer and you should not have to
   // call it. It updates parameters for the generated pipeline and calls
   // updateGenerator() if the pipeline needs to change.
@@ -583,7 +634,12 @@ export class SplatMesh extends SplatGenerator {
 
     // Always update viewToWorld if distance culling is enabled
     const needsViewToWorld =
-      this.enableViewToWorld || this.minDistance > 0 || this.maxDistance > 0;
+      this.enableViewToWorld ||
+      this.minDistance > 0 ||
+      this.maxDistance > 0 ||
+      this.fadeDistance > 0 ||
+      this.downsampleDistance > 0;
+
     if (
       this.context.viewToWorld.updateFromMatrix(viewToWorld) &&
       needsViewToWorld

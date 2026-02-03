@@ -41,7 +41,11 @@ export declare class SplatMesh extends SplatGenerator {
     recolor: THREE.Color;
     opacity: number;
     minDistance: number;
+    fadeDistance: number;
     maxDistance: number;
+    downsampleNth: number;
+    downsampleDistance: number;
+    downsampleSmoothing: number;
     context: SplatMeshContext;
     onFrame?: ({ mesh, time, deltaTime, }: {
         mesh: SplatMesh;
@@ -72,6 +76,8 @@ export declare class SplatMesh extends SplatGenerator {
     constructGenerator(context: SplatMeshContext): void;
     updateGenerator(): void;
     setDistanceRange(minDistance: number, maxDistance: number): void;
+    setFadeDistance(fadeDistance: number): void;
+    setDownsampling(downsampleDistance: number, downsampleNth?: number, downsampleSmoothing?: number): void;
     update({ time, viewToWorld, deltaTime, globalEdits, }: {
         time: number;
         viewToWorld: THREE.Matrix4;
