@@ -7168,7 +7168,6 @@ class SplatGenerator extends THREE__namespace.Object3D {
   }
   updateVersion() {
     this.version += 1;
-    console.log("updateVersion", this.version);
   }
   set needsUpdate(value) {
     if (value) {
@@ -9807,7 +9806,6 @@ class SplatGeometry extends THREE__namespace.InstancedBufferGeometry {
     this.setAttribute("splatIndex", this.attribute);
   }
   update(ordering, activeSplats) {
-    console.log("update SplatGeometry", ordering.length, activeSplats);
     this.ordering = ordering;
     this.attribute.array = ordering;
     this.instanceCount = activeSplats;
@@ -10785,7 +10783,6 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
         ((_c = accumulator.splats.splatEncoding) == null ? void 0 : _c.lnScaleMin) ?? LN_SCALE_MIN,
         ((_d = accumulator.splats.splatEncoding) == null ? void 0 : _d.lnScaleMax) ?? LN_SCALE_MAX
       );
-      console.log("Set geometry in renderer");
       this.geometry = geometry;
       this.material.transparent = !this.viewpoint.stochastic;
       this.material.depthWrite = this.viewpoint.stochastic;
