@@ -223,7 +223,7 @@ export class SplatGenerator extends THREE.Object3D {
 
   updateVersion() {
     this.version += 1;
-    console.log("updateVersion", this.version);
+    //console.log("updateVersion", this.version);
   }
 
   set needsUpdate(value: boolean) {

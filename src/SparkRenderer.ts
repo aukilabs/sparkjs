@@ -616,7 +616,6 @@ export class SparkRenderer extends THREE.Mesh {
         accumulator.splats.splatEncoding?.lnScaleMin ?? LN_SCALE_MIN,
         accumulator.splats.splatEncoding?.lnScaleMax ?? LN_SCALE_MAX,
       );
-      console.log("Set geometry in renderer");
       this.geometry = geometry;
       this.material.transparent = !this.viewpoint.stochastic;
       this.material.depthWrite = this.viewpoint.stochastic;
