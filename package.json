@@ -1,7 +1,7 @@
 {
-  "name": "@sparkjsdev/spark",
-  "version": "0.1.10",
-  "description": "An advanced 3D Gaussian Splatting renderer for THREE.js",
+  "name": "auki-spark-test",
+  "version": "0.1.10-auki-1",
+  "description": "A modified version of SparkJS Gaussian Splats with optimizations added for large-scale scenes.",
   "homepage": "https://sparkjs.dev/",
   "type": "module",
   "main": "./dist/spark.cjs.js",
@@ -31,6 +31,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check . --fix",
     "lint:summary": "biome check --reporter=summary",
+    "prepare": "npm run build:wasm && lefthook install",
     "site:build": "npm run build && npm run site:clean && node scripts/copy-site-files.js && mkdocs build && node scripts/rename-assets-to-static.js",
     "site:clean": "node scripts/clean-site-files.js && node scripts/clean-site.js",
     "site:deploy": "npm run site:build && node scripts/deploy-site.js",
